@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<android.support.constraint.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FBFBFB"
+    tools:context="com.example.xiao.test1.GPSTestActivity">
+
+    <RelativeLayout
+        android:layout_width="409dp"
+        android:layout_height="337dp">
+
+        <TextView
+            android:id="@+id/GPS_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="GPS_status"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/Satellite_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/GPS_status"
+            android:text="Satellite_status"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/textViewGPS"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/Satellite_status"
+            android:text="GPS"
+            android:textSize="16sp" />
+
+    </RelativeLayout>
+</android.support.constraint.ConstraintLayout>

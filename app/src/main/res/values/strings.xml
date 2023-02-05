@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Track Predict</string>
+    <string name="sensortest">SensorTest</string>
+    <string name="gpstest">GPSTest</string>
+    <string name="collectdata">Track</string>
+    <string name="MapShow">Test</string>
+    <string name="button">Set</string>
+    <string name="button2">ShowGPS</string>
+</resources>
