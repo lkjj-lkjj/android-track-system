@@ -10,7 +10,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.location.Location;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
@@ -34,8 +36,13 @@ import com.amap.api.location.AMapLocationClient;
 import com.amap.api.location.AMapLocationClientOption;
 import com.amap.api.location.AMapLocationListener;
 import com.amap.api.maps.AMap;
+import com.amap.api.maps.CameraUpdate;
 import com.amap.api.maps.CameraUpdateFactory;
 import com.amap.api.maps.MapView;
+import com.amap.api.maps.UiSettings;
+import com.amap.api.maps.model.BitmapDescriptor;
+import com.amap.api.maps.model.BitmapDescriptorFactory;
+import com.amap.api.maps.model.CameraPosition;
 import com.amap.api.maps.model.LatLng;
 import com.amap.api.maps.model.Marker;
 import com.amap.api.maps.model.MarkerOptions;
@@ -151,6 +158,7 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
 
     Step stepCounter;
     int step = 0;
+    private boolean moveCamera = true;
 
     public AMapLocationListener mapLocationListener=new AMapLocationListener() {
         @Override
@@ -163,7 +171,13 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                     double Longitude=aMapLocation.getLongitude();
                     String text="经度: "+Longitude+"\n"
                             +"纬度: "+latitude+"\n";
-                    latLngs.add(new LatLng(latitude, Longitude));
+                    if(recordStart)
+                        latLngs.add(new LatLng(latitude, Longitude));
+                    if(moveCamera){
+                        CameraUpdate mCameraUpdate = CameraUpdateFactory.newCameraPosition(new CameraPosition(new LatLng(latitude, Longitude),18,0,0));
+                        aMap.moveCamera(mCameraUpdate);
+                        moveCamera = false;
+                    }
                     System.out.println(text);
                 }
                 else
@@ -208,15 +222,47 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
         aMap = mapView.getMap();
 
         myLocationStyle = new MyLocationStyle();//初始化定位蓝点样式类myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE);//连续定位、且将视角移动到地图中心点，定位点依照设备方向旋转，并且会跟随设备移动。（1秒1次定位）如果不设置myLocationType，默认也会执行此种模式。
+        myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER);
         myLocationStyle.interval(1000); //设置连续定位模式下的定位间隔，只在连续定位模式下生效，单次定位模式下不会生效。单位为毫秒。
         aMap.setMyLocationStyle(myLocationStyle);//设置定位蓝点的Style
         aMap.setMyLocationEnabled(true);
         aMap.moveCamera(CameraUpdateFactory.zoomTo(16));
+        aMap.getUiSettings().setMyLocationButtonEnabled(true);
+
         try {
             module = Module.load(assetFilePath(this,"11spdTransEnc_weight_flat_seqLen1_None_ftrHz50.pt"));
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+
+        try {
+            mLocationClient = new AMapLocationClient(this);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        //初始化定位参数
+        mLocationOption = new AMapLocationClientOption();
+        //设置定位监听
+        mLocationClient.setLocationListener(mapLocationListener);
+        //设置定位模式为高精度模式，Battery_Saving为低功耗模式，Device_Sensors是仅设备模式
+        mLocationOption.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
+        //设置定位间隔,单位毫秒,默认为2000ms
+        mLocationOption.setInterval(2000);
+        //设置定位参数
+        mLocationClient.setLocationOption(mLocationOption);
+        // 此方法为每隔固定时间会发起一次定位请求，为了减少电量消耗或网络流量消耗，
+        // 注意设置合适的定位时间的间隔（最小间隔支持为1000ms），并且在合适时间调用stopLocation()方法来取消定位请求
+        // 在定位结束后，在合适的生命周期调用onDestroy()方法
+        // 在单次定位情况下，定位无论成功与否，都无需调用stopLocation()方法移除请求，定位sdk内部会移除
+        //启动定位
+        mLocationClient.startLocation();
+
+
+        //预测指针
+        BitmapDescriptor bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(BitmapFactory.decodeResource(getResources(), R.mipmap.pic2));
+        final Marker marker = aMap.addMarker(new MarkerOptions().position(new LatLng(0,0)).icon(bitmapDescriptor));
+        marker.setAnchor(0.5f,0.5f);
 
         ExecutorService ex  = Executors.newSingleThreadExecutor();
 
@@ -317,6 +363,8 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                                             System.out.println("==========================="+angle);
                                             Double[] result = calLocationByDistanceAndLocationAndDirection(curr_angle, startLong, startLat,spd);
                                             pre_latLngs.add(new LatLng(result[1], result[0]));
+                                            marker.setPosition(new LatLng(result[1], result[0]));
+                                            marker.setRotateAngle(360-(float)ori);
                                         }
                                     });
                                     i = 0;
@@ -364,8 +412,6 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                 recordStart = false;
                 sensorService.unregisterSensor();
                 Toast.makeText(CollectDataActivity.this, "追踪结束", Toast.LENGTH_LONG).show();
-//                System.out.println("==========================="+second);
-//                System.out.println("==========================="+spd);
             }
         });
     }
@@ -424,27 +470,28 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                     tData.add("time:" + time);
                     tData.add("\n" + "locate:" + gpsService.getDataString());
 
-                    //获取当前经纬度坐标
-                    try {
-                        mLocationClient=new AMapLocationClient(getApplicationContext());
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                    mLocationClient.setLocationListener(mapLocationListener);
-                    mLocationOption=new AMapLocationClientOption();
-                    mLocationOption.setLocationPurpose(AMapLocationClientOption.AMapLocationPurpose.SignIn);
-                    mLocationOption.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
-                    if(null!=mLocationClient)
-                    {
-                        mLocationClient.setLocationOption(mLocationOption);
-                        mLocationClient.stopLocation();
-                        mLocationClient.startLocation();
-                    }
-                    //end
-
+//                    //获取当前经纬度坐标
+//                    try {
+//                        mLocationClient=new AMapLocationClient(getApplicationContext());
+//                    } catch (Exception e) {
+//                        e.printStackTrace();
+//                    }
+//                    mLocationClient.setLocationListener(mapLocationListener);
+//                    mLocationOption=new AMapLocationClientOption();
+//                    mLocationOption.setLocationPurpose(AMapLocationClientOption.AMapLocationPurpose.SignIn);
+//                    mLocationOption.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
+//
+//                    if(null!=mLocationClient)
+//                    {
+//                        mLocationClient.setLocationOption(mLocationOption);
+//                        mLocationClient.stopLocation();
+//                        mLocationClient.startLocation();
+//                    }
+//                    //end
                     try{
                         //draw track line
                         if(showGPS){
+
                             polyline = aMap.addPolyline(new PolylineOptions().
                                     addAll(latLngs)
                                     .width(20)

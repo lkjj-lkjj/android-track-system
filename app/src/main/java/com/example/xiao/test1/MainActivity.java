@@ -2,6 +2,7 @@ package com.example.xiao.test1;
 
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -98,6 +99,16 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }));
+
+        Button collectPath = findViewById(R.id.collect_path);
+        collectPath.setOnClickListener((new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(MainActivity.this, CollectPath.class);
+                startActivity(intent);
+            }
+        }));
+
 
         AMapLocationClient.updatePrivacyShow(this, true, true);
         AMapLocationClient.updatePrivacyAgree(this, true);
