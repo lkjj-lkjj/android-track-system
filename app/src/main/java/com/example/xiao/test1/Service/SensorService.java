@@ -31,7 +31,7 @@ public class SensorService {
     private float[] acc = new float[4];
     private float[] mag = new float[4];
     private float[] gyr = new float[4];
-//    private float pre;
+    private float[] pre = new float[1];
     private float[] gra = new float[4];
     private float[] rot = new float[6];
     private float[] g_rot = new float[5];
@@ -87,9 +87,9 @@ public class SensorService {
                     gyr[2] = event.values[2];
                     gyr[3] = event.accuracy;
                     break;
-//                case Sensor.TYPE_PRESSURE:
-//                    pre = event.values[0];
-//                    break;
+                case Sensor.TYPE_PRESSURE:
+                    pre[0] = event.values[0];
+                    break;
                 case Sensor.TYPE_GRAVITY:
                     gra[0] = event.values[0];
                     gra[1] = event.values[1];
@@ -128,14 +128,6 @@ public class SensorService {
                     + ori + ","
                     + rot[0] + "," + rot[1] + "," + rot[2] + "," + rot[3] + "," + rot[4] + "," + rot[5] + ","
                     + g_rot[0] + "," + g_rot[1] + "," + g_rot[2] + "," + g_rot[3] + "," + g_rot[4] + ",";
-//            float[][] a_g = {acc, gra};
-//            accAndGra.add(a_g);
-//            synchronized (SensorService.this) {
-//                if (dataList.size() > 70) {
-//                    dataList.subList(0, 50).clear();
-//                    accAndGra.subList(0, 50).clear();
-//                }
-//            }
         }
 
         @Override
@@ -183,14 +175,6 @@ public class SensorService {
     public void unregisterSensor() {
         mSensorManager.unregisterListener(mSensorListener);
     }
-//
-//    public ArrayList<String> getDataList() {
-//        return dataList;
-//    }
-//
-//    public ArrayList<float[][]> getAccAndGra() {
-//        return accAndGra;
-//    }
 
     public String getDataString() {
         return dataString;
@@ -202,6 +186,7 @@ public class SensorService {
         value.put(key[2], gyr);
         value.put(key[3], acc);
         value.put(key[4], mag);
+        value.put(key[5], pre);
         value.put(key[6], new float[]{ori});
         value.put(key[7], rot);
         value.put(key[8], g_rot);

@@ -4,30 +4,22 @@ import static com.example.xiao.test1.MapShow.assetFilePath;
 import static java.lang.Thread.sleep;
 
 import android.annotation.SuppressLint;
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
-import android.location.Location;
-import android.net.wifi.ScanResult;
-import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
-import android.support.annotation.RequiresApi;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -39,7 +31,6 @@ import com.amap.api.maps.AMap;
 import com.amap.api.maps.CameraUpdate;
 import com.amap.api.maps.CameraUpdateFactory;
 import com.amap.api.maps.MapView;
-import com.amap.api.maps.UiSettings;
 import com.amap.api.maps.model.BitmapDescriptor;
 import com.amap.api.maps.model.BitmapDescriptorFactory;
 import com.amap.api.maps.model.CameraPosition;
@@ -51,6 +42,7 @@ import com.amap.api.maps.model.Polyline;
 import com.amap.api.maps.model.PolylineOptions;
 import com.example.xiao.test1.Service.GPSService;
 import com.example.xiao.test1.Service.SensorService;
+import com.example.xiao.test1.utils.PathData;
 import com.example.xiao.test1.utils.Step;
 
 import org.pytorch.IValue;
@@ -59,19 +51,15 @@ import org.pytorch.Tensor;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Timer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -81,22 +69,8 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
     private Boolean recordStart = false;
     //布局控件
     private final int READ_DATA = 1;
-//    private TextView tvGps_status;
-    private TextView tvContent;
-    private TextView tvPath;
-    private TextView wifiContent;
-    private TextView wifiPath;
-
     private SensorService sensorService;
     private GPSService gpsService;
-
-    //参数
-//    private String longitude;
-//    private String latitude;
-//    private String speed;
-//    private String bearing;
-//    private String gpsTime;
-//    private float[] angle = new float[3];
     private float[] acc = new float[3];
     private float[] mag = new float[3];
     private float[] gyr = new float[3];
@@ -109,6 +83,7 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
 
     //采样间隔
     private static int COLLECT_INTERVAL = 20;
+    private int differ;
 
     //准备模型输入
     Module module;
@@ -116,37 +91,23 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
     int second = 0;
     Tensor mask = Tensor.fromBlob(new float[]{1.0F}, new long[]{1,1});
     private float spd = 0.0f;
-    private double spd_flow = MainActivity.spd_flow;
     private double curr_angle = -100000;
     private float[] acc_set = new float[150];
     private float[] gyr_set = new float[150];
     private float[] gyr_z = new float[50];
     long[] shape = {1, 150, 1};
-    private boolean showGPS = MainActivity.showGPS;
 
     //文件保存路径
     private static final String path = Environment.getExternalStorageDirectory().getPath() + "/DataCollect/data_gps/";
-    private String wifi_path = Environment.getExternalStorageDirectory().getAbsolutePath() + "/DataCollect/data_wifi/";
     private String filePath;
-    private String wifi_filePath;
-    //    private String videoName;
     private SimpleDateFormat df1 = new SimpleDateFormat("yyyy-MM-dd HH-mm-ss", Locale.getDefault());
-    //private SimpleDateFormat df2 = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-    //private FileOperation fileOperation;
-    private WifiManager wifiManager = null;    //Wifi管理器
-    private IntentFilter mWifiStateFilter;
-    Comparator<ScanResult> comparator = new Comparator<ScanResult>() {
-        @Override
-        public int compare(ScanResult lhs, ScanResult rhs) {
-            return (lhs.level > rhs.level ? -1 : (lhs.level == rhs.level ? 0 : 1));
-        }
-    };
-
-    private String wifi_fileName;
     private List<LatLng> latLngs = new ArrayList<LatLng>();
     private List<LatLng> pre_latLngs = new ArrayList<LatLng>();
+    private List<LatLng> track_latLngs = new ArrayList<LatLng>();
+    private List<LatLng> modified_latLng = new ArrayList<LatLng>();
     Polyline polyline;
     Polyline pre_polyline;
+    Polyline track_polyline;
     /** 地球半径 **/
     private static final double earthR = 6371e3;
     /** 180° **/
@@ -159,6 +120,21 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
     Step stepCounter;
     int step = 0;
     private boolean moveCamera = true;
+    private short drawTrackPath = 0;
+    private SensorEventHelper mSensorHelper;
+
+    private Marker pointMarker;
+    private boolean myPointShow = true;
+    private int oldStep = 0;
+    private int stepStayCount = 0;
+
+    private TextView showDistance;
+    private double distance;
+
+    private List<LatLng> angelLatLngs = new ArrayList<>();
+
+    private List<Marker> markerList = new ArrayList<>();
+
 
     public AMapLocationListener mapLocationListener=new AMapLocationListener() {
         @Override
@@ -171,14 +147,29 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                     double Longitude=aMapLocation.getLongitude();
                     String text="经度: "+Longitude+"\n"
                             +"纬度: "+latitude+"\n";
-                    if(recordStart)
+                    if(recordStart){
                         latLngs.add(new LatLng(latitude, Longitude));
+                    }
+                    if(drawTrackPath == 1){
+                        track_latLngs.clear();
+                        PathData end = MainActivity.TRACK_PATH_DATA.get(MainActivity.TRACK_PATH_DATA.size()-1);
+                        System.out.println(end);
+                        for(PathData item : MainActivity.TRACK_PATH_DATA){
+                            track_latLngs.add(new LatLng(latitude+item.latLng.latitude-end.latLng.latitude,Longitude+item.latLng.longitude-end.latLng.longitude));
+                        }
+                        track_polyline = aMap.addPolyline(new PolylineOptions().
+                                addAll(track_latLngs)
+                                .width(20)
+                                .color(Color.argb(235, 100, 100, 100)));
+                        pointMarker = aMap.addMarker(new MarkerOptions().position(track_latLngs.get(0)).title("终点"));
+                        putStairMarker();
+                        drawTrackPath = 2;
+                    }
                     if(moveCamera){
                         CameraUpdate mCameraUpdate = CameraUpdateFactory.newCameraPosition(new CameraPosition(new LatLng(latitude, Longitude),18,0,0));
                         aMap.moveCamera(mCameraUpdate);
                         moveCamera = false;
                     }
-                    System.out.println(text);
                 }
                 else
                 {
@@ -191,6 +182,110 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
     };
     public AMapLocationClientOption mLocationOption=null;
 
+    public void putStairMarker(){
+            StringBuilder stepInfo = new StringBuilder();
+            StringBuilder stageInfo = new StringBuilder();
+            MarkerOptions markerOptions = new MarkerOptions();
+            Bitmap originalBitmap = BitmapFactory.decodeResource(getResources(), R.mipmap.stair);
+            int targetWidth = 100; // 目标宽度
+            int targetHeight = 100; // 目标高度
+            Bitmap resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, targetWidth, targetHeight, false);
+            markerOptions.icon(BitmapDescriptorFactory.fromBitmap(resizedBitmap));
+
+            for(int i = 0; i < MainActivity.TRACK_PATH_DATA.size(); i++){
+                if(MainActivity.TRACK_PATH_DATA.get(i).stair != 0){
+                    stepInfo.append(MainActivity.TRACK_PATH_DATA.get(i).steps).append((MainActivity.TRACK_PATH_DATA.get(i).stair ==2)? "(下)" : "(上)").append(",");
+                }
+                if(MainActivity.TRACK_PATH_DATA.get(i).stage != 0){
+                    stageInfo.append(MainActivity.TRACK_PATH_DATA.get(i).stage);
+                    markerOptions.position(track_latLngs.get(i-6));
+                    markerOptions.title("前方楼梯");
+                    markerOptions.snippet("楼梯数："+stageInfo+"\n"+"预测阶数："+stepInfo);
+                    Marker marker = aMap.addMarker(markerOptions);
+                    markerList.add(marker);
+
+                    stepInfo = new StringBuilder();
+                    stageInfo = new StringBuilder();
+                }
+            }
+    }
+
+    AMap.OnMarkerClickListener mMarkerListener = new AMap.OnMarkerClickListener() {
+        @Override
+        public boolean onMarkerClick(Marker marker) {
+            if (marker.isInfoWindowShown()) {
+                marker.hideInfoWindow();
+            } else {
+                marker.showInfoWindow();
+            }
+            return true; // 返回:true 表示点击marker 后marker 不会移动到地图中心；返回false 表示点击marker 后marker 会自动移动到地图中心
+        }
+    };
+
+    public void LineCorrection(int second){
+        if(second-1 < track_latLngs.size()){
+            modified_latLng.clear();
+            double k = calAngle(track_latLngs.get(track_latLngs.size()-1),track_latLngs.get(track_latLngs.size()-second+differ),pre_latLngs.get(second-differ-1));
+            for(LatLng item: track_latLngs){
+                revolve(track_latLngs.get(track_latLngs.size()-1), item, k);
+            }
+        }else{
+            modified_latLng.clear();
+            double k = calAngle(track_latLngs.get(track_latLngs.size()-1),track_latLngs.get(0),pre_latLngs.get(second-differ-1));
+            for(LatLng item: track_latLngs){
+                revolve(track_latLngs.get(track_latLngs.size()-1), item, k);
+            }
+        }
+        track_latLngs.clear();
+        track_latLngs.addAll(modified_latLng);
+        track_polyline.remove();
+        track_polyline = aMap.addPolyline(new PolylineOptions().
+                addAll(modified_latLng)
+                .width(20)
+                .color(Color.argb(235, 100, 100, 100)));
+
+        pointMarker.remove();
+        ClearAllPoint();
+        putStairMarker();
+        pointMarker = aMap.addMarker(new MarkerOptions().position(track_latLngs.get(0)).title("终点"));
+
+    }
+    public void ClearAllPoint(){
+        for(Marker item: markerList){
+            item.remove();
+        }
+    }
+    public void LineCorrection(boolean left){
+        modified_latLng.clear();
+        for(LatLng item: track_latLngs){
+            revolve(track_latLngs.get(track_latLngs.size()-1), item, left ? 1:-1);
+        }
+        track_latLngs.clear();
+        track_latLngs.addAll(modified_latLng);
+        track_polyline.remove();
+        track_polyline = aMap.addPolyline(new PolylineOptions().
+                addAll(modified_latLng)
+                .width(20)
+                .color(Color.argb(235, 100, 100, 100)));
+        pointMarker.remove();
+        ClearAllPoint();
+        putStairMarker();
+        pointMarker = aMap.addMarker(new MarkerOptions().position(track_latLngs.get(0)).title("终点"));
+
+    }
+
+    public double calAngle(LatLng p1, LatLng p2, LatLng p3)
+    {
+        double a1 = Math.atan2((p2.longitude - p1.longitude), (p2.latitude - p1.latitude)) * 180 / Math.PI;
+        double a2 = Math.atan2((p3.longitude - p1.longitude), (p3.latitude - p1.latitude)) * 180 / Math.PI;
+        return a1 - a2;
+    }
+    public void revolve(LatLng o, LatLng s, double k){
+        k = Math.toRadians(k);
+        double x2= (s.latitude-o.latitude)*Math.cos(k) +(s.longitude-o.longitude)*Math.sin(k)+o.latitude;
+        double y2= -(s.latitude-o.latitude)*Math.sin(k) + (s.longitude-o.longitude)*Math.cos(k)+o.longitude;
+        modified_latLng.add(new LatLng(x2,y2));
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -200,19 +295,10 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         Button start = findViewById(R.id.CD_start);
         Button stop = findViewById(R.id.CD_stop);
-//        Button setInterval = findViewById(R.id.CD_setInterval);
-//        final EditText etInterval = findViewById(R.id.CD_Interval);
-//        tvGps_status = findViewById(R.id.CD_GPS_status);
-
-//        tvContent = findViewById(R.id.CD_content);
-//        tvPath = findViewById(R.id.CD_Path);
-//        wifiPath = findViewById(R.id.Wifi_Path);
-//        wifiContent = findViewById(R.id.Wifi_content);
-        // 获得WifiManager
-        Context context = getApplicationContext();
-        wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
-        mWifiStateFilter = new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
-        registerReceiver(mWifiStateReceiver, mWifiStateFilter);
+        Button turnleft = findViewById(R.id.turnleft);
+        Button turnright = findViewById(R.id.turnright);
+        Button showGPS = findViewById(R.id.showgps);
+        showDistance = findViewById(R.id.textView9);
 
         sensorService = new SensorService(CollectDataActivity.this);
         gpsService = new GPSService(CollectDataActivity.this, this);
@@ -220,6 +306,7 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
         MapView mapView = (MapView) findViewById(R.id.map);
         mapView.onCreate(savedInstanceState);// 此方法必须重写
         aMap = mapView.getMap();
+        aMap.setOnMarkerClickListener(mMarkerListener);
 
         myLocationStyle = new MyLocationStyle();//初始化定位蓝点样式类myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE);//连续定位、且将视角移动到地图中心点，定位点依照设备方向旋转，并且会跟随设备移动。（1秒1次定位）如果不设置myLocationType，默认也会执行此种模式。
         myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATION_ROTATE_NO_CENTER);
@@ -246,25 +333,36 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
         //设置定位监听
         mLocationClient.setLocationListener(mapLocationListener);
         //设置定位模式为高精度模式，Battery_Saving为低功耗模式，Device_Sensors是仅设备模式
+//        mLocationOption.setLocationPurpose(AMapLocationClientOption.AMapLocationPurpose.SignIn);
         mLocationOption.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
         //设置定位间隔,单位毫秒,默认为2000ms
-        mLocationOption.setInterval(2000);
+//        mLocationOption.setInterval(1000);
         //设置定位参数
-        mLocationClient.setLocationOption(mLocationOption);
-        // 此方法为每隔固定时间会发起一次定位请求，为了减少电量消耗或网络流量消耗，
-        // 注意设置合适的定位时间的间隔（最小间隔支持为1000ms），并且在合适时间调用stopLocation()方法来取消定位请求
-        // 在定位结束后，在合适的生命周期调用onDestroy()方法
-        // 在单次定位情况下，定位无论成功与否，都无需调用stopLocation()方法移除请求，定位sdk内部会移除
-        //启动定位
-        mLocationClient.startLocation();
+        if(null != mLocationClient){
+            mLocationClient.setLocationOption(mLocationOption);
+            // 此方法为每隔固定时间会发起一次定位请求，为了减少电量消耗或网络流量消耗，
+            // 注意设置合适的定位时间的间隔（最小间隔支持为1000ms），并且在合适时间调用stopLocation()方法来取消定位请求
+            // 在定位结束后，在合适的生命周期调用onDestroy()方法
+            // 在单次定位情况下，定位无论成功与否，都无需调用stopLocation()方法移除请求，定位sdk内部会移除
+            //启动定位
+            mLocationClient.stopLocation();
+            mLocationClient.startLocation();
+        }
 
 
         //预测指针
         BitmapDescriptor bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(BitmapFactory.decodeResource(getResources(), R.mipmap.pic2));
         final Marker marker = aMap.addMarker(new MarkerOptions().position(new LatLng(0,0)).icon(bitmapDescriptor));
         marker.setAnchor(0.5f,0.5f);
+        mSensorHelper = new SensorEventHelper(this);
+        mSensorHelper.registerSensorListener();
+        mSensorHelper.setCurrentMarker(marker);
 
         ExecutorService ex  = Executors.newSingleThreadExecutor();
+
+        angelLatLngs.add(new LatLng(0,0));
+        angelLatLngs.add(new LatLng(0,0));
+        angelLatLngs.add(new LatLng(0,0));
 
         start.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -274,17 +372,18 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                 File file = FileOperation.makeFilePath(path, fileName);
                 filePath = file.getAbsolutePath();
                 String dataFormat = "Sys_time,laccx,y,z,lacc_accu,grax,y,z,gra_accu,gyrx,y,z,gyr_accu,accx,y,z,acc_accu,magx,y,z,mag_accu,ori,rot_x,rot_y,rot_z,rot_s,rot_head_acc,rot_accu,grot_x,grot_y,grot_z,g_rot_s,g_rot_accu," +
-                        "lon,lat,speed,bearing,gps_time";
+                        "lon,lat,speed,bearing,gps_time,step";
                 String[] content = {path,fileName,dataFormat};
                 WriteWork writeWork = new WriteWork();
                 writeWork.execute(content);
-                String show = filePath + "\n" + dataFormat;
-//                tvPath.setText(show);
                 recordStart = true;
+                if(drawTrackPath == 0)
+                    drawTrackPath = 1;
                 stepCounter = new Step();
                 Toast.makeText(CollectDataActivity.this, "开始追踪", Toast.LENGTH_LONG).show();
                 //建立一个线程，用来定时记录数据
                 new Thread(new Runnable() {
+                    @SuppressLint("SetTextI18n")
                     @Override
                     public void run() {
                         sensorService.registerSensor();
@@ -302,6 +401,15 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                                 g_rot = (float[]) sensorValue.get("g_rot");
 
                                 step = stepCounter.stepCounter(acc);
+                                if(step == oldStep){
+                                    stepStayCount += 1;
+                                }else{
+                                    stepStayCount = 0;
+                                    oldStep = step;
+                                }
+                                if(stepStayCount > 60){
+                                    spd = 0;
+                                }
 
                                 float[] ori_temp = (float[]) sensorValue.get("ori");
                                 if (ori_temp != null) {
@@ -317,7 +425,6 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                                         + rot[0] + "," + rot[1] + "," + rot[2] + "," + rot[3] + "," + rot[4] + "," + rot[5] + ","
                                         + g_rot[0] + "," + g_rot[1] + "," + g_rot[2] + "," + g_rot[3] + "," + g_rot[4] + ","
                                         + gpsService.getDataString()+ "," + step;
-//                                String data = sensorService.getDataString() + gpsService.getDataString();
                                 String[] content = {path,fileName,dataString};
                                 WriteWork writeWork = new WriteWork();
                                 writeWork.execute(content);
@@ -341,7 +448,9 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                                             Tensor spd_tensor = Tensor.fromBlob(new float[]{spd}, new long[]{1,1,1});
                                             Tensor pred = module.forward(IValue.from(acc_tensor),IValue.from(gyr_tensor), IValue.from(spd_tensor), IValue.from(mask)).toTensor();
                                             float[] arr = pred.getDataAsFloatArray();
-                                            spd += (arr[0] - spd_flow);
+                                            if(stepStayCount <= 60){
+                                                spd += arr[0];//todo
+                                            }
                                             double startLat;
                                             double startLong;
 
@@ -354,25 +463,43 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                                             }
                                             if(curr_angle == -100000)
                                                 curr_angle = ori;
-                                            double angle = 0;
-                                            for(int i = 0; i < 50; i++){
-                                                angle += gyr_z[i] * 0.02;
+                                            else{
+                                                double angle = 0;
+                                                for(int i = 0; i < 50; i++){
+                                                    angle += gyr_z[i] * 0.02;
+                                                }
+                                                angle = (-1) * angle * 180 / Math.PI;
+                                                curr_angle += angle;
                                             }
-                                            angle = (-1) * angle * 180 / Math.PI;
-                                            curr_angle += angle;
-                                            System.out.println("==========================="+angle);
                                             Double[] result = calLocationByDistanceAndLocationAndDirection(curr_angle, startLong, startLat,spd);
+
+                                            LatLng temp1 = angelLatLngs.get(1);
+                                            LatLng temp2 = angelLatLngs.get(2);
+                                            angelLatLngs.set(0, temp1);
+                                            angelLatLngs.set(1, temp2);
+                                            angelLatLngs.set(2, new LatLng(result[1], result[0]));
+                                            if(angelLatLngs.get(0).latitude != 0){
+                                                double angle = calculateAngle(angelLatLngs.get(0), angelLatLngs.get(1), angelLatLngs.get(2));
+                                                if(angle > 70){
+                                                    spd = 0;
+                                                }
+                                            }
                                             pre_latLngs.add(new LatLng(result[1], result[0]));
                                             marker.setPosition(new LatLng(result[1], result[0]));
-                                            marker.setRotateAngle(360-(float)ori);
+                                            Message message = new Message();
+                                            message.what = 2;
+                                            handler.sendMessage(message);
+                                            distance = distance(result[1], result[0], track_latLngs.get(0).latitude, track_latLngs.get(0).longitude);
                                         }
                                     });
                                     i = 0;
-                                    System.out.println(spd);
-                                    System.out.println(second);
+                                    if(pre_latLngs.size() != 0){
+                                        differ = second - pre_latLngs.size();
+                                        if((second-differ) == 4)
+                                            LineCorrection(second);
+                                    }
                                 }
                                 //end
-
                             } catch (InterruptedException e) {
                                 e.printStackTrace();
                             }
@@ -381,25 +508,6 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                                 message.what = READ_DATA;
                                 handler.sendMessage(message);
                                 count = 0;
-                            }
-                        }
-                    }
-                }).start();
-                wifi_fileName = df1.format(date) + ".csv";
-                File wifi_file = FileOperation.makeFilePath(wifi_path, wifi_fileName);
-                wifi_filePath = wifi_file.getAbsolutePath();
-                String wifi_dataFormat = "bssid,ssid,level,frequency";
-                String wifi_show = wifi_filePath + "\n" + wifi_dataFormat;
-//                wifiPath.setText(wifi_show);
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        while(recordStart){
-                            wifiManager.startScan();
-                            try {
-                                sleep(2000);
-                            }catch (Exception e){
-                                e.printStackTrace();
                             }
                         }
                     }
@@ -414,8 +522,61 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                 Toast.makeText(CollectDataActivity.this, "追踪结束", Toast.LENGTH_LONG).show();
             }
         });
+        turnright.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                LineCorrection(false);
+            }
+        });
+        turnleft.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                LineCorrection(true);
+            }
+        });
+
+        showGPS.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                myPointShow = !myPointShow;
+                if(myPointShow){
+                    aMap.setMyLocationStyle(myLocationStyle);//设置定位蓝点的Style
+                    aMap.setMyLocationEnabled(true);
+//                    aMap.moveCamera(CameraUpdateFactory.zoomTo(16));
+                    aMap.getUiSettings().setMyLocationButtonEnabled(true);
+                }
+                else{
+                    aMap.setMyLocationEnabled(false);
+                }
+            }
+        });
     }
 
+    public static double calculateAngle(LatLng latLng1, LatLng latLng2, LatLng latLng3) {
+
+        // 计算向量1
+        double x1 = latLng2.latitude - latLng1.latitude;
+        double y1 = latLng2.longitude - latLng1.longitude;
+
+        // 计算向量2
+        double x2 = latLng3.latitude - latLng1.latitude;
+        double y2 = latLng3.longitude - latLng1.longitude;
+
+        // 计算向量1和向量2的点积
+        double dotProduct = x1 * x2 + y1 * y2;
+
+        // 计算向量1和向量2的模
+        double magnitude1 = Math.sqrt(x1 * x1 + y1 * y1);
+        double magnitude2 = Math.sqrt(x2 * x2 + y2 * y2);
+
+        // 计算角度（弧度）
+        double angleRad = Math.acos(dotProduct / (magnitude1 * magnitude2));
+
+        // 将弧度转换为角度
+        double angleDeg = Math.toDegrees(angleRad);
+
+        return angleDeg;
+    }
     public static Double[] calLocationByDistanceAndLocationAndDirection(double angle, double startLong,double startLat, double distance){
         Double[] result = new Double[2];
         //将距离转换成经度的计算公式
@@ -432,6 +593,19 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
         result[0] = lon;
         result[1] = lat;
         return result;
+    }
+
+    public static double distance(double lat1, double lon1, double lat2, double lon2) {
+        double earthRadius = 6378137; // 地球半径，单位为米
+        double radLat1 = Math.toRadians(lat1);
+        double radLat2 = Math.toRadians(lat2);
+        double a = radLat1 - radLat2;
+        double b = Math.toRadians(lon1) - Math.toRadians(lon2);
+        double s = 2 * Math.asin(Math.sqrt(Math.pow(Math.sin(a / 2), 2)
+                + Math.cos(radLat1) * Math.cos(radLat2) * Math.pow(Math.sin(b / 2), 2)));
+        s = s * earthRadius;
+        s = Math.round(s * 10000) / 10000.0; // 保留4位小数，单位为米
+        return s;
     }
 
 
@@ -464,49 +638,31 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
-                case READ_DATA:
+                case READ_DATA:{
                     ArrayList<String> tData = new ArrayList<>();
                     String time = String.valueOf(System.currentTimeMillis());
                     tData.add("time:" + time);
                     tData.add("\n" + "locate:" + gpsService.getDataString());
 
-//                    //获取当前经纬度坐标
-//                    try {
-//                        mLocationClient=new AMapLocationClient(getApplicationContext());
-//                    } catch (Exception e) {
-//                        e.printStackTrace();
-//                    }
-//                    mLocationClient.setLocationListener(mapLocationListener);
-//                    mLocationOption=new AMapLocationClientOption();
-//                    mLocationOption.setLocationPurpose(AMapLocationClientOption.AMapLocationPurpose.SignIn);
-//                    mLocationOption.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
-//
-//                    if(null!=mLocationClient)
-//                    {
-//                        mLocationClient.setLocationOption(mLocationOption);
-//                        mLocationClient.stopLocation();
-//                        mLocationClient.startLocation();
-//                    }
-//                    //end
                     try{
                         //draw track line
-                        if(showGPS){
-
+                        if(polyline != null)
+                            polyline.remove();
+                        if(myPointShow){
                             polyline = aMap.addPolyline(new PolylineOptions().
                                     addAll(latLngs)
                                     .width(20)
                                     .color(Color.argb(235, 1, 180, 247)));
                         }
-
+                        if(pre_polyline != null)
+                            pre_polyline.remove();
                         pre_polyline = aMap.addPolyline(new PolylineOptions().
                                 addAll(pre_latLngs)
                                 .width(20)
                                 .color(Color.argb(235, 1, 247, 100)));
 
-//                        LatLng latLng = new LatLng(39.906901,116.397972);
-//                        final Marker marker = aMap.addMarker(new MarkerOptions().position(latLng).title("北京").snippet("DefaultMarker"));
                     }catch (Exception e1){
-                     Log.e("line error", "can not draw line");
+                        Log.e("line error", "can not draw line");
                     }
 
                     tData.add("\n" + "acc:" + acc[0] + "," + acc[1] + "," + acc[2] + "," + acc[3]);
@@ -519,106 +675,13 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                     tData.add("\n" + "rot:" + rot[0] + "," + rot[1] + "," + rot[2] + "," + rot[3] + "," + rot[4] + "," +rot[5]);
                     tData.add("\n" + "g_rot" + g_rot[0] + "," + g_rot[1] + "," + g_rot[2] + "," + g_rot[3] + "," + g_rot[4]);
                     tData.add("\n" + "Step:" + step);
-                    String data = listToString(tData);
-//                    String data_save = String.valueOf(System.currentTimeMillis()) + "," + l_acc[0] + "," + l_acc[1] + "," + l_acc[2] + ","
-//                            + ori + "," + gra[0] + "," + gra[1] + "," + gra[2] + ","
-//                            + gyr[0] + "," + gyr[1] + "," + gyr[2] + ","
-//                            + mag[0] + "," + mag[1] + "," + mag[2] + ","
-//                            +longitude + "," +latitude + "," +speed;
-                    //Log.i(TAG,data);
-//                    tvContent.setText(data);
-                    //Log.i(TAG,"1:"+String.valueOf(System.currentTimeMillis()));
-//                    String[] content = {data_save, filePath};
-//                    WriteWork writeWork = new WriteWork();
-//                    writeWork.execute(content);
-                    //fileOperation.write(data);
-                    //Log.i(TAG,"2:"+String.valueOf(System.currentTimeMillis()));
-            }
-        }
-    };
-
-    private final BroadcastReceiver mWifiStateReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if(intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false)){
-                if(recordStart){
-//                    Toast.makeText(CollectDataActivity.this, "Wifi记录开始", Toast.LENGTH_LONG).show();
-                    List<ScanResult> results = ScanWifiInfo();
-                    wifiSaveToFile(results);
+                }break;
+                case 2:{
+                    showDistance.setText(String.format("%.2f", distance) + " m");
                 }
-            }else {
-                Log.e("WiFi", "Wifi didn't update.");
             }
         }
     };
-
-
-    private void wifiSaveToFile(List<ScanResult> results){
-        File file = FileOperation.makeFilePath(wifi_path, wifi_fileName);
-        filePath = file.getAbsolutePath();
-        String dataString = "";
-        dataString = String.valueOf(System.currentTimeMillis());
-//        String[] timeStamp = {wifi_path,wifi_fileName,dataString};
-//        WriteWifiWork writeWork = new WriteWifiWork();
-//        writeWork.execute(timeStamp);
-        try {
-            for (ScanResult result : results){
-                dataString += ",";
-                dataString += "["+result.BSSID+";"+result.SSID+";"+result.level+";"+result.frequency+"]";
-            }
-            String[] data = {wifi_path,wifi_fileName,dataString};
-            WriteWork writeData = new WriteWork();
-            writeData.execute(data);
-            Context context = getApplicationContext();
-//            Toast toast = Toast.makeText(context, "记录成功",Toast.LENGTH_SHORT);
-//            toast.show();
-//            dataString = "end"+"\n";
-//            String[] footer = {wifi_path,wifi_fileName,dataString};
-//            WriteWifiWork writeData = new WriteWifiWork();
-//            writeData.execute(footer);
-        }
-        catch (Exception e) {
-            System.out.println(e);
-            e.printStackTrace();
-            Context context = getApplicationContext();
-//            Toast toast = Toast.makeText(context, "记录失败", Toast.LENGTH_SHORT);
-//            toast.show();
-        }
-    }
-
-    private List<ScanResult> ScanWifiInfo(){
-        StringBuilder scanBuilder= new StringBuilder();
-        scanBuilder.append("time: "+System.currentTimeMillis()+"\n");
-        List<ScanResult> scanResults=wifiManager.getScanResults();//搜索到的设备列表
-        int count = 0;
-        for (ScanResult scanResult : scanResults) {
-            scanBuilder.append(String.format("%-20s",scanResult.BSSID)+
-                    ","+String.format("%-20s",scanResult.SSID)+","+scanResult.level+"\n");
-            count++;
-            if(count >= 10)break;
-        }
-//        wifiContent.setText(scanBuilder);
-        return scanResults;
-    }
-
-
-    private static String listToString(List<String> list) {
-        if (list == null) {
-            return null;
-        }
-        StringBuilder result = new StringBuilder();
-        boolean first = true;
-        //第一个前面不拼接","
-        for (String string : list) {
-            if (first) {
-                first = false;
-            } else {
-                result.append(";");
-            }
-            result.append(string);
-        }
-        return result.toString();
-    }
 
     @Override
     protected void onResume() {
@@ -629,8 +692,6 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
     @Override
     protected void onDestroy() {
         super.onDestroy();
-//        releaseMediaRecorder();
-//        releaseCamera();
         gpsService.removeUpdates();
         sensorService.unregisterSensor();
     }
@@ -640,15 +701,6 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
         protected Void doInBackground(String... strings) {
             FileOperation fileOperation = new FileOperation(strings[0],strings[1]);
             fileOperation.writeCsv(strings[2]);
-            return null;
-        }
-    }
-
-    private static class WriteWifiWork extends AsyncTask<String, Void, Void> {
-        @Override
-        protected Void doInBackground(String... strings) {
-            FileOperation fileOperation = new FileOperation(strings[0],strings[1]);
-            fileOperation.write(strings[2]);
             return null;
         }
     }

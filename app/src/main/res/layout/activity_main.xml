@@ -12,7 +12,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="100dp"
-        android:layout_marginTop="140dp"
+        android:layout_marginTop="50dp"
         android:layout_marginEnd="100dp"
         android:backgroundTint="#6690C5"
         android:shadowColor="#3F51B5"
@@ -23,14 +23,14 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@+id/collect_path" />
 
     <Button
         android:id="@+id/GPSTest"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="100dp"
-        android:layout_marginTop="40dp"
+        android:layout_marginTop="50dp"
         android:layout_marginEnd="100dp"
         android:backgroundTint="#6690C5"
         android:text="@string/gpstest"
@@ -44,85 +44,34 @@
         app:layout_constraintTop_toBottomOf="@id/SensorTest" />
 
     <Button
-        android:id="@+id/CollectData"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="100dp"
-        android:layout_marginTop="40dp"
-        android:layout_marginEnd="100dp"
-        android:backgroundTint="#6690C5"
-        android:text="@string/collectdata"
-        android:textAllCaps="false"
-        android:textColor="#212121"
-        android:textSize="16sp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.0"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/GPSTest" />
-
-    <Button
         android:id="@+id/map_show"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="100dp"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="50dp"
         android:layout_marginEnd="100dp"
         android:backgroundTint="#6690C5"
         android:text="@string/MapShow"
         android:textColor="#FFFFFF"
         android:textSize="16sp"
-        android:visibility="invisible"
+        android:visibility="visible"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/button2" />
-
-    <EditText
-        android:id="@+id/input"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="40dp"
-        android:ems="10"
-        android:hint="Spd attn"
-        android:inputType="numberDecimal"
-        android:minHeight="48dp"
-        android:textColor="#FFFFFF"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.497"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/CollectData" />
-
-    <Button
-        android:id="@+id/button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:backgroundTint="#6690C5"
-        android:text="@string/button"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/input" />
-
-    <Button
-        android:id="@+id/button2"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:backgroundTint="#6690C5"
-        android:text="@string/button2"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.506"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/button" />
+        app:layout_constraintTop_toBottomOf="@+id/GPSTest" />
 
     <Button
         android:id="@+id/collect_path"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="56dp"
+        android:layout_marginStart="100dp"
+        android:layout_marginTop="96dp"
+        android:layout_marginEnd="100dp"
+        android:backgroundTint="#6690C5"
         android:text="CollectPath"
+        android:textColor="#FFF"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.498"
+        app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 

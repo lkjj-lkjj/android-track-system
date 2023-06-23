@@ -1,8 +1,5 @@
 package com.example.xiao.test1.utils;
 
-/**
- * Created by xiao on 2018/9/29.
- */
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;

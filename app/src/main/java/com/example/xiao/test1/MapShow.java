@@ -41,7 +41,6 @@ public class MapShow extends AppCompatActivity {
 
         Tensor pred = module.forward(IValue.from(acc),IValue.from(gy), IValue.from(spd), IValue.from(mask)).toTensor();
         float[] arr = pred.getDataAsFloatArray();
-        System.out.println(Arrays.toString(arr));
 
 
     }

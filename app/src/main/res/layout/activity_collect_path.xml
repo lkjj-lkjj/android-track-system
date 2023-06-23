@@ -10,7 +10,7 @@
         android:id="@+id/start_collect"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="88dp"
+        android:layout_marginStart="72dp"
         android:layout_marginBottom="100dp"
         android:text="Start"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -21,19 +21,33 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="72dp"
+        android:layout_marginEnd="72dp"
         android:layout_marginBottom="100dp"
         android:text="stop"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/start_collect" />
 
     <ImageView
         android:id="@+id/imageView"
-        android:layout_width="193dp"
-        android:layout_height="218dp"
-        android:layout_marginTop="256dp"
+        android:layout_width="230dp"
+        android:layout_height="297dp"
+        android:layout_marginTop="144dp"
+        android:src="@mipmap/pic3"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.417"
+        app:layout_constraintHorizontal_bias="0.497"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        tools:srcCompat="@android:mipmap/sym_def_app_icon" />
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Move Straight"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/imageView" />
 </android.support.constraint.ConstraintLayout>

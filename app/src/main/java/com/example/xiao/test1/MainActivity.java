@@ -2,7 +2,6 @@ package com.example.xiao.test1;
 
 
 import android.Manifest;
-import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -14,17 +13,18 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import com.amap.api.location.AMapLocationClient;
-import com.amap.api.maps.MapsInitializer;
+import com.amap.api.maps.model.LatLng;
+import com.example.xiao.test1.utils.PathData;
+
+import java.util.ArrayList;
+import java.util.List;
 
 
 public class MainActivity extends AppCompatActivity {
-
-    public static double spd_flow = 0;
-    public static boolean showGPS = true;
+    public static List<PathData> TRACK_PATH_DATA = new ArrayList<>();
     private static final int REQUEST_CODE = 1;
     private static final String TAG = "MainActivity";
     private static String[] PERMISSIONS = {
@@ -58,47 +58,16 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(intent);
             }
         });
-        Button collectData = findViewById(R.id.CollectData);
-        collectData.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(MainActivity.this, CollectDataActivity.class);
-                startActivity(intent);
-            }
-        });
-
 
         Button mapButton = findViewById(R.id.map_show);
         mapButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Intent intent = new Intent(MainActivity.this, MapShow.class);
+                Intent intent = new Intent(MainActivity.this, TrackPath.class);
                 startActivity(intent);
             }
         });
 
-        Button button = findViewById(R.id.button);
-        button.setOnClickListener((new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                EditText spdtext = findViewById(R.id.input);
-                spd_flow = Double.parseDouble(spdtext.getText().toString());
-            }
-        }));
-
-        Button button2 = findViewById(R.id.button2);
-        button2.setOnClickListener((new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if(showGPS){
-                    showGPS = false;
-                    Toast.makeText(MainActivity.this, "GPS轨迹关闭", Toast.LENGTH_SHORT).show();
-                }else{
-                    showGPS = true;
-                    Toast.makeText(MainActivity.this, "GPS轨迹打开", Toast.LENGTH_SHORT).show();
-                }
-            }
-        }));
 
         Button collectPath = findViewById(R.id.collect_path);
         collectPath.setOnClickListener((new View.OnClickListener() {

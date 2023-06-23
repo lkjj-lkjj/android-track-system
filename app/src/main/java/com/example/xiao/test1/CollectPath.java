@@ -1,44 +1,92 @@
 package com.example.xiao.test1;
 
-import android.content.Context;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
+import static com.example.xiao.test1.MapShow.assetFilePath;
+import static java.lang.Thread.sleep;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Environment;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
-import android.widget.TextView;
 import android.widget.Toast;
 
+import com.amap.api.maps.model.LatLng;
+import com.example.xiao.test1.Service.SensorService;
+import com.example.xiao.test1.utils.Step;
+
+import org.pytorch.IValue;
+import org.pytorch.Module;
+import org.pytorch.Tensor;
+
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 public class CollectPath extends AppCompatActivity {
-    private static final String TAG = "SensorTest";
-
-
-    private SensorManager mSensorManager;
-    private Sensor mAccelerometer;
-    private Sensor mMagnetic;
-    private Sensor mGyroscope;
-    private Sensor mPressure;
-    private Sensor mGravity;
-    private Sensor mLinear_accelerometer;
-    private Sensor mOrientation;
-
-    private SensorListener mSensorListener;
-
-    private long timestamp;
-    private static final float NS2S = 1.0f / 1000000000.0f;
-    private float[] angle = new float[3];
-
+    private String path = Environment.getExternalStorageDirectory().getPath() + "/DataCollect/collect_path/";
+    private SimpleDateFormat df1 = new SimpleDateFormat("yyyy-MM-dd HH-mm-ss", Locale.getDefault());
+    private String filePath;
+    private boolean recordStart = false;
+    private SensorService sensorService;
     private float[] acc = new float[3];
     private float[] mag = new float[3];
     private float[] gyr = new float[3];
-    private float pre;
+    //    private float pre;
     private float[] gra = new float[3];
     private float[] l_acc = new float[3];
-    private float[] ori = new float[3];
+    private float[] rot = new float[4];
+    private float[] g_rot = new float[3];
+    private float ori;
+    //采样间隔
+    private static int COLLECT_INTERVAL = 20;
+    Module module;
+    int i = 0;
+    int second = 0;
+    Tensor mask = Tensor.fromBlob(new float[]{1.0F}, new long[]{1,1});
+    private float spd = 0.0f;
+    private double curr_angle = -100000;
+    private float[] acc_set = new float[150];
+    private float[] gyr_set = new float[150];
+    private float[] gyr_z = new float[50];
+    private float[] pre = new float[1];
+    private List<LatLng> latLngs = new ArrayList<LatLng>();
+    private List<LatLng> pre_latLngs = new ArrayList<LatLng>();
+    long[] shape = {1, 150, 1};
+    /** 地球半径 **/
+    private static final double earthR = 6371e3;
+    Step stepCounter;
+    int step = 0;
+    private int oldStep = 0;
+    private int stepStayCount = 0;
+    private List<Double> accz = new ArrayList<>();
+
+    //检测楼梯相关变量
+    private static final double THRESHOLD = 15;
+
+    int stepCount = 0;
+    double total = 0;
+    boolean isPeak = false;
+    int nextStepDiff = 0;
+    int beginI = 0;
+    int endI = 0;
+    int stage = 0;
+    int stageDiff = 0;
+
+    int writeStairStep = 0;
+    int writeStage = 0;
+
+    boolean onStair = false;
+
+    int updown = 0;
+    float beginPre = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,152 +95,255 @@ public class CollectPath extends AppCompatActivity {
 
         Button start = findViewById(R.id.start_collect);
         Button stop = findViewById(R.id.stop_collect);
+        sensorService = new SensorService(CollectPath.this);
+        ExecutorService ex  = Executors.newSingleThreadExecutor();
+
+        try {
+            module = Module.load(assetFilePath(this,"11spdTransEnc_weight_flat_seqLen1_None_ftrHz50.pt"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        latLngs.add(new LatLng(0,0));
+        accz.add(0, (double) 0);
+        accz.add(0, (double) 0);
+        accz.add(0, (double) 0);
 
 
         start.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                Date date = new Date();
+                final String fileName = df1.format(date) + ".csv";
+                File file = FileOperation.makeFilePath(path, fileName);
+                filePath = file.getAbsolutePath();
+                String dataFormat = "lat,lng,turn,stair,steps,stage\n0,0,0,0,0,0";
+                String[] content = {path,fileName,dataFormat};
+                CollectPath.WriteWork writeWork = new CollectPath.WriteWork();
+                writeWork.execute(content);
+                recordStart = true;
+                stepCounter = new Step();
+                Toast.makeText(CollectPath.this, "开始记录", Toast.LENGTH_SHORT).show();
 
+                stepCount = 0;
+                total = 0;
+                isPeak = false;
+                nextStepDiff = 0;
+                beginI = 0;
+                endI = 0;
+                stage = 0;
+                stageDiff = 0;
+                writeStairStep = 0;
+                writeStage = 0;
+
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        sensorService.registerSensor();
+                        while (recordStart) {
+                            try {
+                                sleep(COLLECT_INTERVAL - 1);
+                                Map<String, float[]> sensorValue = sensorService.getValue();
+                                l_acc = (float[]) sensorValue.get("lacc");
+                                gra = (float[]) sensorValue.get("gra");
+                                gyr = (float[]) sensorValue.get("gyr");
+                                acc = (float[]) sensorValue.get("acc");
+                                mag = (float[]) sensorValue.get("mag");
+                                rot = (float[]) sensorValue.get("rot");
+                                g_rot = (float[]) sensorValue.get("g_rot");
+                                pre = (float[]) sensorValue.get("pre");
+
+                                step = stepCounter.stepCounter(acc);
+                                //检测楼梯和拐角
+                                double temp1 = accz.get(1);
+                                double temp2 = accz.get(2);
+                                accz.set(0, temp1);
+                                accz.set(1, temp2);
+                                accz.set(2, (double)acc[2]);
+
+                                nextStepDiff++;
+                                stageDiff ++;
+                                if(stageDiff>=300 && stage>=1){
+//                                    System.out.println("阶数："+stage);
+                                    writeStage = stage;
+                                    stage = 0;
+                                }
+
+                                if(nextStepDiff >= 65 && stepCount != 0){
+                                    if(stepCount<=3){
+//                                        System.out.println("数据差值：" + nextStepDiff);
+//                                        System.out.println("剔除步数：" + stepCount+"\n");
+                                        total = 0;
+                                        stepCount = 0;
+                                        nextStepDiff = 0;
+                                    }else{
+//                                        System.out.println("+++++++++++++ "+beginI);
+//                                        System.out.println("数据差值：" + nextStepDiff);
+//                                        System.out.println("步数：" + stepCount);
+//                                        System.out.println("平均振幅：" +total/stepCount);
+//                                        System.out.println("------------- "+endI+"\n");
+                                        writeStairStep = stepCount;
+                                        if(pre[0] - beginPre >0)
+                                            updown = 1;
+                                        else
+                                            updown = 2;
+                                        stepCount = 0;
+                                        nextStepDiff = 0;
+                                        total = 0;
+                                        stage += 1;
+                                    }
+                                }
+
+                                if (accz.get(1) > accz.get(0) && accz.get(1) > accz.get(2) && accz.get(1) > THRESHOLD) {
+                                    if (!isPeak) {
+                                        onStair = true;
+                                        stageDiff = 0;
+                                        nextStepDiff = 0;
+
+                                        endI = i+2;
+
+                                        total += accz.get(1);
+                                        stepCount++;
+                                        if(stepCount == 1){
+                                            beginI = i+2;
+                                            beginPre = pre[0];
+                                        }
+                                        isPeak = true;
+                                    }
+                                } else {
+                                    isPeak = false;
+                                }
+
+                                //结束
+
+
+
+                                if(step == oldStep){
+                                    stepStayCount += 1;
+                                }else{
+                                    stepStayCount = 0;
+                                    oldStep = step;
+                                }
+                                if(stepStayCount > 60){
+                                    spd = 0;
+                                }
+
+                                float[] ori_temp = (float[]) sensorValue.get("ori");
+                                if (ori_temp != null) {
+                                    ori = ori_temp[0];
+                                }
+
+                                for(int j = 0; j < 3; j++){
+                                    acc_set[i*3+j] = acc[j];
+                                    gyr_set[i*3+j] = gyr[j];
+                                }
+                                gyr_z[i] = gyr[2];
+                                i += 1;
+
+                                if(i == 50){
+                                    second += 1;
+                                    ex.execute(()->{
+                                        if(latLngs.size() != 0){
+                                            Tensor acc_tensor = Tensor.fromBlob(acc_set, shape);
+                                            Tensor gyr_tensor = Tensor.fromBlob(gyr_set, shape);
+                                            Tensor spd_tensor = Tensor.fromBlob(new float[]{spd}, new long[]{1,1,1});
+                                            Tensor pred = module.forward(IValue.from(acc_tensor),IValue.from(gyr_tensor), IValue.from(spd_tensor), IValue.from(mask)).toTensor();
+                                            float[] arr = pred.getDataAsFloatArray();
+                                            if(stepStayCount <= 60){
+                                                spd += arr[0];//todo
+                                            }
+                                            double startLat;
+                                            double startLong;
+
+                                            if(pre_latLngs.size() == 0){
+                                                startLat = latLngs.get(latLngs.size()-1).latitude;
+                                                startLong = latLngs.get(latLngs.size()-1).longitude;
+                                            }else{
+                                                startLat = pre_latLngs.get(pre_latLngs.size()-1).latitude;
+                                                startLong = pre_latLngs.get(pre_latLngs.size()-1).longitude;
+                                            }
+                                            if(curr_angle == -100000)
+                                                curr_angle = ori;
+                                            else{
+                                                double angle = 0;
+                                                for(int i = 0; i < 50; i++){
+                                                    angle += gyr_z[i] * 0.02;
+                                                }
+                                                angle = (-1) * angle * 180 / Math.PI;
+                                                curr_angle += angle;
+                                            }
+                                            Double[] result = calLocationByDistanceAndLocationAndDirection(curr_angle, startLong, startLat,spd);
+                                            pre_latLngs.add(new LatLng(result[1], result[0]));
+                                            //写入文件
+                                            String dataString;
+                                            if(writeStairStep != 0){
+                                                dataString = result[1].toString()+","+result[0].toString()+",0,"+updown+","+writeStairStep+",0";
+                                                updown = 0;
+                                                writeStairStep = 0;
+                                            }else if (writeStage != 0) {
+                                                dataString = result[1].toString()+","+result[0].toString()+",0,"+updown+",0,"+writeStage;
+                                                updown = 0;
+                                                writeStage = 0;
+                                            }else{
+                                                dataString = result[1].toString()+","+result[0].toString()+",0,0,0,0";
+                                            }
+                                            String[] content = {path,fileName,dataString};
+                                            WriteWork writeWork = new WriteWork();
+                                            writeWork.execute(content);
+                                        }
+                                    });
+                                    i = 0;
+                                }
+                                //end
+
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    }
+                }).start();
             }
         });
 
         stop.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-
+                Toast.makeText(CollectPath.this, "记录结束", Toast.LENGTH_SHORT).show();
+                recordStart = false;
             }
         });
+    }
 
-        // 初始化传感器
-        mSensorListener = new SensorListener();
-        mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        mMagnetic = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        mGyroscope = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
-        mPressure = mSensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
-        mGravity = mSensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
-        mLinear_accelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
-        mOrientation = mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION);
-
+    public static Double[] calLocationByDistanceAndLocationAndDirection(double angle, double startLong,double startLat, double distance){
+        Double[] result = new Double[2];
+        //将距离转换成经度的计算公式
+        double δ = distance/earthR;
+        // 转换为radian，否则结果会不正确
+        angle = Math.toRadians(angle);
+        startLong = Math.toRadians(startLong);
+        startLat = Math.toRadians(startLat);
+        double lat = Math.asin(Math.sin(startLat)*Math.cos(δ)+Math.cos(startLat)*Math.sin(δ)*Math.cos(angle));
+        double lon = startLong + Math.atan2(Math.sin(angle)*Math.sin(δ)*Math.cos(startLat),Math.cos(δ)-Math.sin(startLat)*Math.sin(lat));
+        // 转为正常的10进制经纬度
+        lon = Math.toDegrees(lon);
+        lat = Math.toDegrees(lat);
+        result[0] = lon;
+        result[1] = lat;
+        return result;
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-        // 注册传感器监听函数
-        mSensorManager.registerListener(mSensorListener, mAccelerometer, SensorManager.SENSOR_DELAY_UI);
-        mSensorManager.registerListener(mSensorListener, mMagnetic, SensorManager.SENSOR_DELAY_UI);
-        mSensorManager.registerListener(mSensorListener, mGyroscope, SensorManager.SENSOR_DELAY_UI);
-        mSensorManager.registerListener(mSensorListener, mPressure, SensorManager.SENSOR_DELAY_UI);
-        mSensorManager.registerListener(mSensorListener, mGravity, SensorManager.SENSOR_DELAY_UI);
-        mSensorManager.registerListener(mSensorListener, mLinear_accelerometer, SensorManager.SENSOR_DELAY_UI);
-        mSensorManager.registerListener(mSensorListener, mOrientation, SensorManager.SENSOR_DELAY_UI);
+    protected void onDestroy() {
+        super.onDestroy();
+        sensorService.unregisterSensor();
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        // 注销监听函数
-        mSensorManager.unregisterListener(mSensorListener);
-    }
-
-    private class SensorListener implements SensorEventListener {
-
+    private static class WriteWork extends AsyncTask<String, Void, Void> {
         @Override
-        public void onSensorChanged(SensorEvent event) {
-            switch (event.sensor.getType()) {
-                case Sensor.TYPE_ACCELEROMETER:
-                    // 读取加速度传感器数值，values数组0,1,2分别对应x,y,z轴的加速度
-                    acc[0] = event.values[0];
-                    acc[1] = event.values[1];
-                    acc[2] = event.values[2];
-                    String accelerometer = "重力加速度传感器(m/s^2)\n" + "x:"
-                            + (acc[0]) + "\n" + "y:"
-                            + (acc[1]) + "\n" + "z:"
-                            + (acc[2]);
-                    break;
-                case Sensor.TYPE_MAGNETIC_FIELD:
-                    mag[0] = event.values[0];
-                    mag[1] = event.values[1];
-                    mag[2] = event.values[2];
-                    String magnetic = "磁场传感器(uT,micro-Tesla)\n" + "x:"
-                            + (mag[0]) + "\n" + "y:"
-                            + (mag[1]) + "\n" + "z:"
-                            + (mag[2]);
-                    break;
-                case Sensor.TYPE_GYROSCOPE:
-                    if (timestamp != 0) {
-                        final float dT = (event.timestamp - timestamp) * NS2S;
-
-                        angle[0] += event.values[0] * dT;
-                        angle[1] += event.values[1] * dT;
-                        angle[2] += event.values[2] * dT;
-
-                        gyr[0] = (float) Math.toDegrees(angle[0]);
-                        gyr[1] = (float) Math.toDegrees(angle[1]);
-                        gyr[2] = (float) Math.toDegrees(angle[2]);
-                    }
-                    String gyroscope = "陀螺仪传感器(度)\n" + "x:"
-                            + (gyr[0]) + "\n" + "y:"
-                            + (gyr[1]) + "\n" + "z:"
-                            + (gyr[2]);
-                    timestamp = event.timestamp;
-                    break;
-                case Sensor.TYPE_PRESSURE:
-                    pre = event.values[0];
-                    String pressure = "压力传感器（hPa）\n" + pre;
-                    break;
-                case Sensor.TYPE_GRAVITY:
-                    gra[0] = event.values[0];
-                    gra[1] = event.values[1];
-                    gra[2] = event.values[2];
-                    String gravity = "重力传感器(m/s^2)\n" + "x:"
-                            + (gra[0]) + "\n" + "y:"
-                            + (gra[1]) + "\n" + "z:"
-                            + (gra[2]);
-                    break;
-                case Sensor.TYPE_LINEAR_ACCELERATION:
-                    l_acc[0] = event.values[0];
-                    l_acc[1] = event.values[1];
-                    l_acc[2] = event.values[2];
-                    String linear_acceleration = "线性加速度传感器(m/s^2)\n" + "x:"
-                            + ((int) l_acc[0]) + "\n" + "y:"
-                            + ((int) l_acc[1]) + "\n" + "z:"
-                            + ((int) l_acc[2]);
-                    break;
-                case Sensor.TYPE_ORIENTATION:
-//                    ori[0] = event.values[0];
-//                    ori[1] = event.values[1];
-//                    ori[2] = event.values[2];
-//                    String orientation = "方向传感器(度)\n" + "x:"
-//                            + (mag[0]) + "\n" + "y:"
-//                            + (mag[1]) + "\n" + "z:"
-//                            + (mag[2]);
-                    ori[0] = calculateOrientation();
-                    String orientation = "方向传感器(度)\n" + ori[0];
-                    break;
-            }
+        protected Void doInBackground(String... strings) {
+            FileOperation fileOperation = new FileOperation(strings[0],strings[1]);
+            fileOperation.writeCsv(strings[2]);
+            return null;
         }
-
-        @Override
-        public void onAccuracyChanged(Sensor sensor, int accuracy) {
-            Log.i(TAG, "onAccuracyChanged");
-        }
-
     }
-
-    private float calculateOrientation() {
-        float[] values = new float[3];
-        float[] R = new float[16];
-        SensorManager.getRotationMatrix(R, null, acc, mag);
-        SensorManager.getOrientation(R, values);
-        // 要经过一次数据格式的转换，转换为度
-        values[0] = (float) Math.toDegrees(values[0]);
-        if (values[0] < 0)
-            values[0] += 360;
-        return values[0];
-    }
-
-
-
 }

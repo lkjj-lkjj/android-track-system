@@ -12,18 +12,17 @@
         android:id="@+id/constraintLayout"
         android:layout_width="413dp"
         android:layout_height="755dp"
-        android:layout_marginBottom="1dp"
-        app:layout_constraintBottom_toTopOf="@+id/CD_start"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.0"
-        app:layout_constraintStart_toStartOf="parent">
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
 
         <Button
             android:id="@+id/CD_start"
             android:layout_width="102dp"
             android:layout_height="0dp"
             android:layout_marginStart="60dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="76dp"
             android:backgroundTint="#9FC2D6"
             android:text="Start"
             android:textAllCaps="false"
@@ -32,23 +31,21 @@
 
         <com.amap.api.maps.MapView
             android:id="@+id/map"
-            android:layout_width="404dp"
-            android:layout_height="694dp"
+            android:layout_width="403dp"
+            android:layout_height="621dp"
             android:layout_marginEnd="5dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.0">
-
-        </com.amap.api.maps.MapView>
+            app:layout_constraintVertical_bias="0.0" />
 
         <Button
             android:id="@+id/CD_stop"
             android:layout_width="102dp"
             android:layout_height="0dp"
             android:layout_marginStart="80dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="76dp"
             android:layout_marginEnd="60dp"
             android:backgroundTint="#9FC2D6"
             android:text="Stop"
@@ -57,6 +54,52 @@
             app:layout_constraintHorizontal_bias="0.0"
             app:layout_constraintStart_toEndOf="@+id/CD_start"
             app:layout_constraintTop_toBottomOf="@+id/map" />
+
+        <Button
+            android:id="@+id/turnright"
+            android:layout_width="70dp"
+            android:layout_height="50dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"
+            android:text="CW"
+            app:layout_constraintBottom_toTopOf="@+id/CD_stop"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <Button
+            android:id="@+id/turnleft"
+            android:layout_width="70dp"
+            android:layout_height="50dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="16dp"
+            android:text="CCW"
+            app:layout_constraintBottom_toTopOf="@+id/CD_stop"
+            app:layout_constraintEnd_toStartOf="@+id/turnright" />
+
+        <Button
+            android:id="@+id/showgps"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="28dp"
+            android:layout_marginBottom="16dp"
+            android:text="ON/OFF GPS"
+            app:layout_constraintBottom_toTopOf="@+id/CD_start"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <TextView
+            android:id="@+id/textView9"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="84dp"
+            android:text="distance"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/turnleft"
+            app:layout_constraintHorizontal_bias="0.0"
+            app:layout_constraintStart_toEndOf="@+id/showgps" />
+
     </android.support.constraint.ConstraintLayout>
 
 </android.support.constraint.ConstraintLayout>

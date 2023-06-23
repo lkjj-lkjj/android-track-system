@@ -10,9 +10,6 @@ import java.io.RandomAccessFile;
 
 import static android.content.ContentValues.TAG;
 
-/**
- * Created by xiao on 2018/5/7.
- */
 
 class FileOperation {
 
