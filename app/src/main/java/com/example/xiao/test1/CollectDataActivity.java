@@ -99,7 +99,11 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
 
     //文件保存路径
     private static final String path = Environment.getExternalStorageDirectory().getPath() + "/DataCollect/data_gps/";
+    private static final String greenLinePath = Environment.getExternalStorageDirectory().getPath() + "/DataCollect/green_line_path/";
+    private static final String blueLinePath = Environment.getExternalStorageDirectory().getPath() + "/DataCollect/blue_line_path/";
+    private static final String opTimePath = Environment.getExternalStorageDirectory().getPath() + "/DataCollect/opTime_path/";
     private String filePath;
+    private String greenPath;
     private SimpleDateFormat df1 = new SimpleDateFormat("yyyy-MM-dd HH-mm-ss", Locale.getDefault());
     private List<LatLng> latLngs = new ArrayList<LatLng>();
     private List<LatLng> pre_latLngs = new ArrayList<LatLng>();
@@ -369,13 +373,29 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
             public void onClick(View v) {
                 Date date = new Date();
                 final String fileName = df1.format(date) + ".csv";
+
                 File file = FileOperation.makeFilePath(path, fileName);
+                File greenFile = FileOperation.makeFilePath(greenLinePath, fileName);
+                File opTime = FileOperation.makeFilePath(opTimePath, fileName);
+
                 filePath = file.getAbsolutePath();
+                greenPath = greenFile.getAbsolutePath();
+
                 String dataFormat = "Sys_time,laccx,y,z,lacc_accu,grax,y,z,gra_accu,gyrx,y,z,gyr_accu,accx,y,z,acc_accu,magx,y,z,mag_accu,ori,rot_x,rot_y,rot_z,rot_s,rot_head_acc,rot_accu,grot_x,grot_y,grot_z,g_rot_s,g_rot_accu," +
                         "lon,lat,speed,bearing,gps_time,step";
                 String[] content = {path,fileName,dataFormat};
                 WriteWork writeWork = new WriteWork();
                 writeWork.execute(content);
+
+                String dataFormat1 = "lat,lng";
+                String[] content1 = {greenLinePath,fileName,dataFormat1};
+                WriteWork writeWork1 = new WriteWork();
+                writeWork1.execute(content1);
+
+                String[] content2 = {opTimePath,fileName,"time"};
+                WriteWork writeWork2 = new WriteWork();
+                writeWork2.execute(content2);
+
                 recordStart = true;
                 if(drawTrackPath == 0)
                     drawTrackPath = 1;
@@ -446,7 +466,16 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                                             Tensor acc_tensor = Tensor.fromBlob(acc_set, shape);
                                             Tensor gyr_tensor = Tensor.fromBlob(gyr_set, shape);
                                             Tensor spd_tensor = Tensor.fromBlob(new float[]{spd}, new long[]{1,1,1});
+
+                                            long startTime = System.nanoTime();
                                             Tensor pred = module.forward(IValue.from(acc_tensor),IValue.from(gyr_tensor), IValue.from(spd_tensor), IValue.from(mask)).toTensor();
+                                            long endTime = System.nanoTime();
+                                            long duration = (endTime - startTime) / 1000000;
+                                            String[] content1 = {opTimePath,fileName,String.valueOf(duration)};
+                                            WriteWork writeWork1 = new WriteWork();
+                                            writeWork1.execute(content1);
+
+
                                             float[] arr = pred.getDataAsFloatArray();
                                             if(stepStayCount <= 60){
                                                 spd += arr[0];//todo
@@ -486,6 +515,12 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
                                             }
                                             pre_latLngs.add(new LatLng(result[1], result[0]));
                                             marker.setPosition(new LatLng(result[1], result[0]));
+
+                                            //green line position
+                                            String[] content2 = {greenLinePath,fileName,result[1].toString()+","+result[0].toString()};
+                                            WriteWork writeWork2 = new WriteWork();
+                                            writeWork2.execute(content2);
+
                                             Message message = new Message();
                                             message.what = 2;
                                             handler.sendMessage(message);
@@ -519,6 +554,17 @@ public class CollectDataActivity extends AppCompatActivity {//implements Surface
             public void onClick(View v) {
                 recordStart = false;
                 sensorService.unregisterSensor();
+                Date date = new Date();
+                final String fileName = df1.format(date) + ".csv";
+                File blueFile = FileOperation.makeFilePath(blueLinePath, fileName);
+                String data = "";
+                for(LatLng latLng : track_latLngs){
+                    data += latLng.latitude + "," + latLng.longitude + "\n";
+                }
+                String[] content = {blueLinePath,fileName,"lat,lng\n"+data};
+                WriteWork writeWork = new WriteWork();
+                writeWork.execute(content);
+
                 Toast.makeText(CollectDataActivity.this, "追踪结束", Toast.LENGTH_LONG).show();
             }
         });
